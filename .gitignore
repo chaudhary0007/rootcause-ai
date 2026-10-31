@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables & API keys (Never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# RootCause-AI local telemetry artifacts
+.rootcause/
+*.log
+
+# Playwright test execution results & media
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# TypeScript build outputs
+dist/
+build/
+
+# Operating System & IDE metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

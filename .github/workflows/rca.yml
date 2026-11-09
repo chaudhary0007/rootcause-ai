@@ -37,15 +37,13 @@ jobs:
       - name: Run Playwright Tests
         id: run-tests
         run: npx playwright test
-
       - name: Run RootCause-AI Triage
-        # Triggers only when the test step fails
         if: failure() && steps.run-tests.outcome == 'failure'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --dns-result-order=ipv4first
         run: npm run triage
-
       - name: Upload Failure Artifacts
         if: failure()
         uses: actions/upload-artifact@v4

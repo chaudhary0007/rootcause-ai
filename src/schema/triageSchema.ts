@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 export const FailureCategoryEnum = z.enum([
-  'PRODUCT_REGRESSION', // The application code broke existing business logic
-  'LOCATOR_CHURN',     // UI DOM changed (renamed IDs, altered classes, stripped data-test)
-  'FLAKY_ENVIRONMENT', // Network timeouts, 504 Gateway errors, socket resets
-  'TEST_DATA_DEFECT',  // Expired authentication tokens, missing test accounts/mocks
+  'PRODUCT_REGRESSION', // Application code broke existing functionality
+  'LOCATOR_CHURN',     // UI selectors changed (IDs, classes, data-test attributes)
+  'FLAKY_ENVIRONMENT', // Network timeouts, gateway errors, socket drops
+  'TEST_DATA_DEFECT',  // Expired credentials, invalid mocks, missing seed records
 ]);
 
 export type FailureCategory = z.infer<typeof FailureCategoryEnum>;

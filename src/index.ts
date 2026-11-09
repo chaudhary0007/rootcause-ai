@@ -32,8 +32,11 @@ async function main() {
       console.log('\nProposed Patch:\n' + result.suggestedFix.codePatch);
     }
     console.log('============================================================\n');
-  } catch (error) {
-    console.error('❌ Triage execution failed:', error);
+  } catch (error: any) {
+    console.error('❌ Triage execution failed:', error.message || error);
+    if (error.cause) {
+      console.error('🔍 Root Cause Detail:', error.cause);
+    }
     process.exit(1);
   }
 }

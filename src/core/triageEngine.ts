@@ -20,12 +20,42 @@ Rules:
 - Provide a clear code patch or remediation recommendation.
 - Output MUST be valid JSON matching the requested structure.`;
 
+const CANDIDATE_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+
+/**
+ * Checks if an error is a transient network or server error worth retrying
+ */
+function isTransientError(error: any): boolean {
+  if (!error) return false;
+  const status = error.status;
+  if (status === 503 || status === 429 || status === 500) return true;
+
+  const message = error.message?.toLowerCase() || '';
+  const causeMsg = error.cause?.message?.toLowerCase() || '';
+  const code = error.cause?.code || error.code || '';
+
+  return (
+    message.includes('fetch failed') ||
+    causeMsg.includes('econnreset') ||
+    causeMsg.includes('etimedout') ||
+    causeMsg.includes('enotfound') ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT'
+  );
+}
+
 async function callWithRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 2000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    if (retries > 0 && (error.status === 503 || error.status === 429)) {
-      console.warn(`\x1b[33m[RootCause-AI] API busy (${error.status}). Retrying in ${delayMs / 1000}s... (${retries} retries left)\x1b[0m`);
+    if (retries > 0 && isTransientError(error)) {
+      const reason = error.status ? `Status ${error.status}` : error.cause?.message || error.message;
+      console.warn(`\x1b[33m[RootCause-AI] Transient issue (${reason}). Retrying in ${delayMs / 1000}s... (${retries} retries left)\x1b[0m`);
       await new Promise((res) => setTimeout(res, delayMs));
       return callWithRetry(fn, retries - 1, delayMs * 2);
     }
@@ -36,18 +66,10 @@ async function callWithRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 200
 export async function runTriage(context: EnrichedContext): Promise<TriageResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is missing. Set it in your .env file.');
+    throw new Error('GEMINI_API_KEY environment variable is missing.');
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-3.8-flash',
-    systemInstruction: SYSTEM_INSTRUCTION,
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-    },
-  });
 
   const prompt = `Analyze this test failure and PR Git diff:
 
@@ -74,14 +96,32 @@ Respond with a JSON object with this exact shape:
   }
 }`;
 
-  const response = await callWithRetry(() => model.generateContent(prompt));
-  const responseText = response.response.text();
+  let lastError: any = null;
 
-  try {
-    const parsedJson = JSON.parse(responseText);
-    return TriageResultSchema.parse(parsedJson);
-  } catch (err) {
-    console.error('Failed to parse or validate Gemini output. Raw response:', responseText);
-    throw err;
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      console.log(`\x1b[36m[RootCause-AI] Dispatching triage request to ${modelName}...\x1b[0m`);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: SYSTEM_INSTRUCTION,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      });
+
+      const response = await callWithRetry(() => model.generateContent(prompt));
+      const responseText = response.response.text();
+
+      const parsedJson = JSON.parse(responseText);
+      return TriageResultSchema.parse(parsedJson);
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`\x1b[33m[RootCause-AI] ${modelName} failed. Reason: ${error.message}${error.cause ? ` (${error.cause.message})` : ''}\x1b[0m`);
+      // Cascade to the next model in the candidate list
+      continue;
+    }
   }
+
+  throw new Error(`All candidate models failed. Last error: ${lastError?.message || lastError}`);
 }
